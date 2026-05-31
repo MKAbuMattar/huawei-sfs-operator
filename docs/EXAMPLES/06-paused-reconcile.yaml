@@ -1,0 +1,48 @@
+# =============================================================================
+# Example 06 — Paused reconcile (maintenance / debugging)
+# =============================================================================
+# Setting `spec.pausedReconcile: true` makes the operator stop reconciling
+# this specific CR. It will:
+#   - NOT call the HuaweiCloud API on update events
+#   - NOT progress phase (status stays at whatever it was)
+#   - NOT process deletion (finalizer stays — `kubectl delete sfsti` hangs)
+#
+# Use this when:
+#   - You need to make a "scary" change to the FS via the Huawei console
+#     directly, and don't want the operator to fight you
+#   - You're debugging the operator and want to freeze the state of one CR
+#   - You're migrating a CR between environments and want it inert
+#
+# To resume: flip to false and re-apply, OR delete the field entirely.
+#
+# WARNING: Don't leave pausedReconcile=true with a Delete reclaim policy
+# and then `kubectl delete sfsti`. The CR will hang in Terminating forever
+# until you either:
+#   1. Resume reconciliation (flip pausedReconcile back to false), OR
+#   2. Manually remove the finalizer (last resort — leaks the FS).
+# =============================================================================
+apiVersion: sfs.huaweicloud.com/v1alpha1
+kind: SfsTurboInstance
+metadata:
+  name: production-data
+  namespace: prod
+  annotations:
+    # Recommend annotating WHY it's paused + WHO to ask about resuming.
+    pause.huawei-sfs-operator.io/reason: "Manual capacity expansion via console, see INC-12345"
+    pause.huawei-sfs-operator.io/owner: "platform-oncall@example.com"
+spec:
+  reclaimPolicy: Retain
+  pausedReconcile: true          # ← the pause toggle
+
+  # Everything else carries on as the source of truth, but the operator
+  # won't reconcile against it until pausedReconcile is flipped back to
+  # false. So even if you "fix" a typo here, nothing happens until resume.
+  fsName: production-data
+  size: 2000
+  shareType: STANDARD
+  shareProtocol: NFS
+  availabilityZone: <your-az>
+  vpcId: <your-vpc-id>
+  subnetId: <your-subnet-id>
+  securityGroupId: ""
+  autoCreateSgRules: true

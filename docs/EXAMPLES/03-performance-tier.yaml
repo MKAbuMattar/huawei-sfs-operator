@@ -1,0 +1,42 @@
+# =============================================================================
+# Example 03 — PERFORMANCE tier (high-throughput / low-latency)
+# =============================================================================
+# PERFORMANCE tier delivers ~3.5x the bandwidth of STANDARD at the same size,
+# at higher per-GiB cost. Use when sustained throughput > 200 MB/s matters:
+# ML training data, build artifacts shared across many runners, scratch space
+# for distributed batch jobs.
+#
+# Sizes for PERFORMANCE: 600 GiB minimum, up to 32 TiB. The bandwidth scales
+# with size, so for >1 GB/s sustained you want ≥4 TiB.
+# =============================================================================
+apiVersion: sfs.huaweicloud.com/v1alpha1
+kind: SfsTurboInstance
+metadata:
+  name: ml-training-data
+  namespace: ml-pipeline
+spec:
+  reclaimPolicy: Retain
+  fsName: ml-training-data
+  size: 4096                     # 4 TiB
+  shareType: PERFORMANCE         # ← the differentiator
+  shareProtocol: NFS
+
+  # `enhanced: true` upgrades to "Enhanced Performance" — bursts to higher
+  # peak throughput at additional cost. Only available on PERFORMANCE tier.
+  # Recommend leaving false unless you've benchmarked and need it.
+  enhanced: false
+
+  availabilityZone: <your-az>
+  vpcId: <your-vpc-id>
+  subnetId: <your-subnet-id>
+  securityGroupId: ""
+  autoCreateSgRules: true
+
+  # Server-side encryption with a KMS Customer Master Key.
+  # Optional but recommended for PII / regulated data.
+  cryptKeyId: <your-kms-cmk-id>
+
+  tags:
+    Environment: production
+    DataClass: training-corpus
+    Owner: ml-platform

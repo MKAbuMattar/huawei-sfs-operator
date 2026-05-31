@@ -1,0 +1,36 @@
+# =============================================================================
+# Example 02 — Ephemeral FS for CI / scratch, Delete reclaim policy
+# =============================================================================
+# Small 500 GiB FS that gets DESTROYED when the CR is deleted.
+#
+# When to use this: integration tests, ephemeral preview environments, scratch
+# space for batch jobs. Data is gone the moment `kubectl delete sfsti scratch`
+# returns. Irreversible.
+#
+# WARNING: do NOT point production workloads at a Delete-policy FS. A typo'd
+# `kubectl delete` is unrecoverable.
+# =============================================================================
+apiVersion: sfs.huaweicloud.com/v1alpha1
+kind: SfsTurboInstance
+metadata:
+  name: ci-scratch
+  namespace: ci-tests
+  labels:
+    app.kubernetes.io/managed-by: huawei-sfs-operator
+    purpose: ephemeral
+spec:
+  reclaimPolicy: Delete          # FS gone on CR deletion
+  fsName: ci-scratch-${BUILD_ID} # interpolate per-build to avoid collisions
+  size: 500
+  shareType: STANDARD
+  shareProtocol: NFS
+
+  availabilityZone: <your-az>
+  vpcId: <your-vpc-id>
+  subnetId: <your-subnet-id>
+  securityGroupId: ""
+  autoCreateSgRules: true
+
+  tags:
+    purpose: ci-ephemeral
+    expires: short-lived
