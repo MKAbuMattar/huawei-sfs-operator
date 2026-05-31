@@ -1,0 +1,52 @@
+{{/*
+ClusterRole for the operator. Permissions are the union of:
+  - Full lifecycle on SfsTurboInstance + status + finalizers (the CRs we own)
+  - Leader-election Lease support (enabled when replicaCount > 1)
+  - events.k8s.io to emit reconcile events (kubectl describe sfsti shows them)
+
+NOTHING ELSE. The reconciler has no business touching Pods, Deployments,
+Secrets, etc. — those are owned by consumer charts. Tight blast radius.
+*/}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: sfs-operator
+  labels:
+    {{- include "operator.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-12"
+rules:
+  # Primary CRD lifecycle.
+  - apiGroups: ["sfs.huaweicloud.com"]
+    resources: ["sfsturboinstances"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["sfs.huaweicloud.com"]
+    resources: ["sfsturboinstances/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: ["sfs.huaweicloud.com"]
+    resources: ["sfsturboinstances/finalizers"]
+    verbs: ["update"]
+
+  # Leader election (off in v1; harmless to grant).
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Reconcile events surface in `kubectl describe sfsti` and Loki.
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  - apiGroups: ["events.k8s.io"]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+
+  # Refactored in v0.2: operator creates the per-FS PV+PVC because
+  # helm `lookup()` doesn't work under standard ArgoCD repo-server.
+  # Read+write full lifecycle so the operator can adopt drift and
+  # (future Phase) honor reclaim=Delete by removing both.
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]

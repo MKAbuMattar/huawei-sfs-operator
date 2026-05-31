@@ -1,0 +1,108 @@
+{{/*
+sfs-operator controller Deployment.
+
+v1: single replica, leader-election off. Bump replicaCount to 2+ for HA with
+leader-election so we get HA without two controllers racing on the same
+CR's status updates.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sfs-operator
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "operator.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount | default 1 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 0
+  selector:
+    matchLabels:
+      {{- include "operator.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "operator.selectorLabels" . | nindent 8 }}
+      annotations:
+        # Force a re-rollout when the ConfigMap (project id / region) changes.
+        # Without this, kubelet keeps using the cached env vars and the
+        # operator might be talking to the wrong region.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-env.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: sfs-operator
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: manager
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}{{ if .Values.image.digest }}@{{ .Values.image.digest }}{{ end }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" }}
+          args:
+            - --health-probe-bind-address=:{{ .Values.healthProbe.port }}
+            - --metrics-bind-address={{ if .Values.metrics.enabled }}:{{ .Values.metrics.port }}{{ else }}0{{ end }}
+            - --leader-elect={{ .Values.leaderElection.enabled | default false }}
+          env:
+            - name: HUAWEI_PROJECT_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: sfs-operator-env
+                  key: HUAWEI_PROJECT_ID
+            - name: HUAWEI_REGION
+              valueFrom:
+                configMapKeyRef:
+                  name: sfs-operator-env
+                  key: HUAWEI_REGION
+            {{- if eq (.Values.huawei.credentials.source | default "secret") "secret" }}
+            # Static AK/SK from a pre-existing Secret. v1 default — see
+            # values.yaml comment for the rationale. Switch to source=agency
+            # once pod-agency 400 is debugged
+            - name: HUAWEI_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.huawei.credentials.secretName | default "huawei-creds" }}
+                  key: HUAWEI_ACCESS_KEY
+            - name: HUAWEI_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.huawei.credentials.secretName | default "huawei-creds" }}
+                  key: HUAWEI_SECRET_KEY
+            {{- end }}
+          ports:
+            - name: health
+              containerPort: {{ .Values.healthProbe.port }}
+              protocol: TCP
+            {{- if .Values.metrics.enabled }}
+            - name: metrics
+              containerPort: {{ .Values.metrics.port }}
+              protocol: TCP
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]

@@ -1,0 +1,314 @@
+{{/*
+SfsTurboInstance CRD. SOURCE OF TRUTH lives in the operator repo at
+config/crd/bases/sfs.huaweicloud.com_sfsturboinstances.yaml — this file is
+a verbatim copy. When the operator schema changes:
+  cp ../../../sfs-operator/config/crd/bases/*.yaml ./templates/crd.yaml
+Then re-add this header block.
+
+ArgoCD applies CRDs via ServerSideApply (set on the Applications
+syncOptions) so schema updates patch instead of failing on immutable
+field changes.
+*/}}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.1
+    argocd.argoproj.io/sync-wave: "-15"
+  name: sfsturboinstances.sfs.huaweicloud.com
+spec:
+  group: sfs.huaweicloud.com
+  names:
+    kind: SfsTurboInstance
+    listKind: SfsTurboInstanceList
+    plural: sfsturboinstances
+    shortNames:
+    - sfsti
+    singular: sfsturboinstance
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.fsId
+      name: FS_ID
+      type: string
+    - jsonPath: .status.exportPath
+      name: EXPORT
+      type: string
+    - jsonPath: .spec.size
+      name: SIZE_GIB
+      type: integer
+    - jsonPath: .spec.reclaimPolicy
+      name: RECLAIM
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: READY
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: AGE
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          SfsTurboInstance is the Schema for the sfsturboinstances API.
+
+          One CR per HuaweiCloud SFS Turbo file system. The operator owns the
+          Huawei-side lifecycle (create / update / delete) but does NOT render
+          any PV / PVC / CronJob — that stays in the consuming Helm chart,
+          which reads .status.fsId / .status.exportPath via `helm lookup`.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of SfsTurboInstance
+            properties:
+              autoCreateSgRules:
+                default: true
+                description: |-
+                  autoCreateSgRules controls whether Huawei opens NFS ports on
+                  the auto-created security group. Ignored when securityGroupId
+                  is set explicitly.
+                type: boolean
+              availabilityZone:
+                description: |-
+                  availabilityZone — SFS Turbo Standard is single-AZ. The cluster
+                  node pool should overlap with this AZ to avoid cross-AZ NFS
+                  latency. Immutable.
+                type: string
+              cryptKeyId:
+                description: |-
+                  cryptKeyId — KMS CMK UUID. When set, the FS is encrypted at
+                  rest under this key. Empty string disables encryption.
+                type: string
+              enhanced:
+                default: false
+                description: enhanced flips the premium tier toggle. Affects pricing.
+                type: boolean
+              fsName:
+                description: |-
+                  fsName is the SFS Turbo file system name shown in the Huawei
+                  console. Immutable after first successful reconcile.
+                maxLength: 64
+                minLength: 4
+                type: string
+              pausedReconcile:
+                default: false
+                description: |-
+                  pausedReconcile is a safety switch. When true the controller
+                  returns early without touching the CR or the Huawei API. Used
+                  for manual operator-side interventions without fighting the
+                  reconciler.
+                type: boolean
+              pvcName:
+                description: |-
+                  pvcName is the K8s name to use for both the PV (cluster-scoped)
+                  and the PVC (namespaced, in the CR's namespace). Pod specs
+                  referencing `claimName: <pvcName>` will find it. When empty the
+                  operator does NOT render PV+PVC at all.
+                type: string
+              pvcSize:
+                description: |-
+                  pvcSize is the K8s storage request (e.g. "500Gi"). Defaults to
+                  the same Gi as spec.size. Independent from the underlying FS size
+                  so a consumer can request a smaller capacity than the FS supports.
+                type: string
+              reclaimPolicy:
+                default: Retain
+                description: |-
+                  reclaimPolicy controls what happens to the underlying SFS Turbo
+                  file system when this CR is deleted.
+                    Retain (default): leave the FS intact; remove finalizer immediately.
+                    Delete:           call DeleteSfsTurbo, wait for completion, then
+                                      remove the finalizer. Destroys all data.
+                enum:
+                - Retain
+                - Delete
+                type: string
+              securityGroupId:
+                description: |-
+                  securityGroupId — leave empty ("") to have Huawei auto-create a
+                  per-FS security group with the right NFS ports. Provide a
+                  pre-created SG ID for prod when you want tighter rules.
+                type: string
+              shareProtocol:
+                default: NFS
+                description: shareProtocol — only NFS is supported for v1alpha1.
+                enum:
+                - NFS
+                type: string
+              shareType:
+                default: STANDARD
+                description: shareType — STANDARD (HDD) or PERFORMANCE (SSD-backed).
+                enum:
+                - STANDARD
+                - PERFORMANCE
+                type: string
+              size:
+                description: size in GiB. STANDARD minimum is 500; PERFORMANCE varies.
+                format: int32
+                maximum: 32768
+                minimum: 500
+                type: integer
+              storageClassName:
+                description: |-
+                  storageClassName is the K8s StorageClass on both PV + PVC. The PV
+                  is static-bound (no dynamic provisioning), so the class just acts
+                  as a marker. Defaults to "csi-sfsturbo-perinstance".
+                type: string
+              subnetId:
+                description: subnetId — subnet inside vpcId. Immutable.
+                type: string
+              tags:
+                additionalProperties:
+                  type: string
+                description: |-
+                  tags propagate to the underlying SFS Turbo resource. Useful for
+                  cost allocation and ownership audits.
+                type: object
+              vpcId:
+                description: |-
+                  vpcId — the VPC the FS attaches to. Must be the same VPC the
+                  CCE cluster runs in. Immutable.
+                type: string
+            required:
+            - availabilityZone
+            - fsName
+            - size
+            - subnetId
+            - vpcId
+            type: object
+          status:
+            description: status defines the observed state of SfsTurboInstance
+            properties:
+              conditions:
+                description: |-
+                  conditions report the current state of the resource. Types:
+                    Ready        — the FS exists and is mountable
+                    Provisioning — the operator is calling CreateSfsTurbo
+                    Deleting     — the CR has a deletion timestamp; finalizer in flight
+                    Failed       — most recent reconcile attempt errored
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              exportPath:
+                description: |-
+                  exportPath is the NFS export string ("<ip>:/") clients mount.
+                  Populated alongside fsId.
+                type: string
+              fsId:
+                description: |-
+                  fsId is the HuaweiCloud SFS Turbo file system UUID once the FS
+                  has been successfully created. Consumers (helm chart, etc.) read
+                  this to populate static PV manifests.
+                type: string
+              observedGeneration:
+                description: |-
+                  observedGeneration mirrors .metadata.generation that was
+                  reconciled. Use to tell whether the controller has seen the
+                  latest spec yet.
+                format: int64
+                type: integer
+              securityGroupId:
+                description: |-
+                  securityGroupId is the SG currently attached to the FS Huawei-
+                  side. The reconciler compares this with spec.SecurityGroupId
+                  and calls ChangeSecurityGroup when they drift. Empty when the
+                  FS uses Huawei's auto-created SG (spec.SecurityGroupId == "").
+                type: string
+              size:
+                description: |-
+                  size is the FS's currently-allocated capacity in GiB, as
+                  reported by Huawei. When spec.size > status.size, the operator
+                  issues an ExpandShare; when spec.size < status.size, the
+                  operator refuses (SFS Turbo doesn't support shrinkage) and sets
+                  a ShrinkRefused condition.
+                format: int32
+                type: integer
+              tags:
+                additionalProperties:
+                  type: string
+                description: |-
+                  tags is the observed tag set on the FS Huawei-side, mirrored
+                  from ShowSharedTags. Used by `kubectl describe` and to surface
+                  drift to operators investigating "why is tag X gone?" The
+                  reconciler reconciles spec.tags → live tags on every loop.
+                type: object
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
