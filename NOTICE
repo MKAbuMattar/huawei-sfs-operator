@@ -1,0 +1,13 @@
+huawei-sfs-operator
+Copyright 2026 The huawei-sfs-operator Authors.
+
+This product includes software developed at
+The huawei-sfs-operator project (https://github.com/MKAbuMattar/huawei-sfs-operator).
+
+This product depends on:
+  - Kubernetes (https://github.com/kubernetes/kubernetes) — Apache 2.0
+  - controller-runtime (https://github.com/kubernetes-sigs/controller-runtime) — Apache 2.0
+  - Kubebuilder (https://github.com/kubernetes-sigs/kubebuilder) — Apache 2.0
+  - HuaweiCloud SDK for Go (https://github.com/huaweicloud/huaweicloud-sdk-go-v3) — Apache 2.0
+
+See LICENSE for the full Apache-2.0 text.
