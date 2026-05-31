@@ -1,0 +1,103 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write       # for creating the GitHub Release
+  packages: write       # for pushing to ghcr.io
+  id-token: write       # for OIDC (cosign keyless signing)
+  attestations: write   # for attestations
+
+jobs:
+  release:
+    name: Build + push image + chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # need full history for changelog
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify tag matches Chart.yaml version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          CHART_VERSION=$(grep '^version:' deploy/helm/sfs-operator/Chart.yaml | awk '{print $2}')
+          if [ "$TAG" != "$CHART_VERSION" ]; then
+            echo "::error::Tag v$TAG does not match Chart.yaml version $CHART_VERSION"
+            exit 1
+          fi
+          echo "TAG=$TAG" >> $GITHUB_ENV
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build + push multi-arch image
+        id: docker_build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/sfs-operator:v${{ env.TAG }}
+            ghcr.io/${{ github.repository_owner }}/sfs-operator:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image (keyless via GitHub OIDC)
+        env:
+          DIGEST: ${{ steps.docker_build.outputs.digest }}
+        run: |
+          cosign sign --yes \
+            ghcr.io/${{ github.repository_owner }}/sfs-operator@${DIGEST}
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ghcr.io/${{ github.repository_owner }}/sfs-operator:v${{ env.TAG }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.0
+
+      - name: Package + push Helm chart to OCI
+        run: |
+          helm package deploy/helm/sfs-operator --version "${TAG}" --app-version "${TAG}"
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+          helm push sfs-operator-${TAG}.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
+
+      - name: Extract changelog excerpt
+        id: changelog
+        run: |
+          awk '/^## \[/{if(found){exit} else if($2=="['"v$TAG"']"||$2=="[Unreleased]"){found=1; next}} found' CHANGELOG.md > release_notes.md
+          cat release_notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.TAG }}
+          name: v${{ env.TAG }}
+          body_path: release_notes.md
+          files: |
+            sbom.spdx.json
+            sfs-operator-${{ env.TAG }}.tgz
+          generate_release_notes: true
