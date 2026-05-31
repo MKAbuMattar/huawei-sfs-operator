@@ -17,6 +17,12 @@ import (
 	sfsturboregion "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/sfsturbo/v1/region"
 )
 
+// contentTypeJSON is the Content-Type header value used on every SFS
+// Turbo SDK request that takes a JSON body. Hoisted to a constant so
+// the same literal isn't repeated across the file (the SDK requires
+// the field on each *Request struct even when the body is implicit).
+const contentTypeJSON = "application/json"
+
 // Client is the small surface area the reconciler uses. Mockable
 // through the Interface type below.
 //
@@ -121,9 +127,11 @@ func NewClient(cfg *Config) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	c.sdk = sfsturbo.NewSFSTurboClient(
-		sfsturbo.SFSTurboClientBuilder().WithRegion(region).WithCredential(creds).Build(),
-	)
+	hcClient, err := sfsturbo.SFSTurboClientBuilder().WithRegion(region).WithCredential(creds).SafeBuild()
+	if err != nil {
+		return nil, fmt.Errorf("build SFS Turbo SDK client: %w", err)
+	}
+	c.sdk = sfsturbo.NewSFSTurboClient(hcClient)
 	return c, nil
 }
 
@@ -167,9 +175,11 @@ func (c *Client) ensureSDK() (*sfsturbo.SFSTurboClient, error) {
 		if buildErr != nil {
 			return nil, fmt.Errorf("build pod-agency credentials: %w", buildErr)
 		}
-		c.sdk = sfsturbo.NewSFSTurboClient(
-			sfsturbo.SFSTurboClientBuilder().WithRegion(c.region).WithCredential(basicCreds).Build(),
-		)
+		hcClient, buildErr := sfsturbo.SFSTurboClientBuilder().WithRegion(c.region).WithCredential(basicCreds).SafeBuild()
+		if buildErr != nil {
+			return nil, fmt.Errorf("build SFS Turbo SDK client: %w", buildErr)
+		}
+		c.sdk = sfsturbo.NewSFSTurboClient(hcClient)
 	}
 	return c.sdk, nil
 }
@@ -278,7 +288,7 @@ func (c *Client) Create(ctx context.Context, in CreateInput) (string, error) {
 // client-side. Scale is bounded for typical CCE clusters.
 func (c *Client) FindByName(ctx context.Context, name string) (*ShareInfo, error) {
 	req := &sfsturbomodel.ListSharesRequest{
-		ContentType: "application/json",
+		ContentType: contentTypeJSON,
 	}
 	sdk, err := c.ensureSDK()
 	if err != nil {
@@ -422,7 +432,7 @@ func (c *Client) Delete(ctx context.Context, id string) error {
 // Wraps ShowSharedTags (per-share read; ListSharedTags is project-wide).
 func (c *Client) ListTags(ctx context.Context, id string) (map[string]string, error) {
 	req := &sfsturbomodel.ShowSharedTagsRequest{
-		ContentType: "application/json",
+		ContentType: contentTypeJSON,
 		ShareId:     id,
 	}
 	sdk, err := c.ensureSDK()
@@ -447,7 +457,7 @@ func (c *Client) ListTags(ctx context.Context, id string) (map[string]string, er
 // to the most recent call's value).
 func (c *Client) AddTag(ctx context.Context, id, key, value string) error {
 	req := &sfsturbomodel.CreateSharedTagRequest{
-		ContentType: "application/json",
+		ContentType: contentTypeJSON,
 		ShareId:     id,
 		Body: &sfsturbomodel.CreateSharedTagRequestBody{
 			Tag: &sfsturbomodel.ResourceTag{Key: key, Value: value},
@@ -468,7 +478,7 @@ func (c *Client) AddTag(ctx context.Context, id, key, value string) error {
 // against itself if the operator's leader changes mid-loop.
 func (c *Client) DeleteTag(ctx context.Context, id, key string) error {
 	req := &sfsturbomodel.DeleteSharedTagRequest{
-		ContentType: "application/json",
+		ContentType: contentTypeJSON,
 		ShareId:     id,
 		Key:         key,
 	}
@@ -491,7 +501,7 @@ func (c *Client) DeleteTag(ctx context.Context, id, key string) error {
 // completion and avoid issuing a second change while one is in flight.
 func (c *Client) ChangeSecurityGroup(ctx context.Context, id, newSecurityGroupId string) error {
 	req := &sfsturbomodel.ChangeSecurityGroupRequest{
-		ContentType: "application/json",
+		ContentType: contentTypeJSON,
 		ShareId:     id,
 		Body: &sfsturbomodel.ChangeSecurityGroupRequestBody{
 			ChangeSecurityGroup: &sfsturbomodel.ChangeSecurityGroup{
@@ -519,18 +529,18 @@ func IsAvailable(status string) bool { return status == "200" }
 // FS. Documented in the ShowShare response schema. We use these to
 // avoid double-issuing a mutation that's already underway.
 const (
-	SubStatusExpanding       = "121"
-	SubStatusExpandOK        = "221"
-	SubStatusExpandFailed    = "321"
-	SubStatusSgChanging      = "132"
-	SubStatusSgChangeOK      = "232"
-	SubStatusSgChangeFailed  = "332"
-	SubStatusVpcAddPending   = "137"
-	SubStatusVpcAddOK        = "237"
-	SubStatusVpcAddFailed    = "337"
-	SubStatusVpcDelPending   = "138"
-	SubStatusVpcDelOK        = "238"
-	SubStatusVpcDelFailed    = "338"
+	SubStatusExpanding      = "121"
+	SubStatusExpandOK       = "221"
+	SubStatusExpandFailed   = "321"
+	SubStatusSgChanging     = "132"
+	SubStatusSgChangeOK     = "232"
+	SubStatusSgChangeFailed = "332"
+	SubStatusVpcAddPending  = "137"
+	SubStatusVpcAddOK       = "237"
+	SubStatusVpcAddFailed   = "337"
+	SubStatusVpcDelPending  = "138"
+	SubStatusVpcDelOK       = "238"
+	SubStatusVpcDelFailed   = "338"
 )
 
 // IsSgChangeInFlight reports whether the FS is currently mid-way

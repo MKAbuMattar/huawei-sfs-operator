@@ -60,6 +60,12 @@ const requeueProvisioning = 30 * time.Second
 // faster than create — usually a few seconds — so we poll harder.
 const requeueDeleting = 10 * time.Second
 
+// ComponentSharedStorage is the value stamped on
+// `app.kubernetes.io/component` for the PV and PVC built by buildPV /
+// buildPVC. Hoisted to a constant so the same literal doesn't fan out
+// across the file (the operator stamps it on each managed object).
+const ComponentSharedStorage = "shared-storage"
+
 // SfsTurboInstanceReconciler reconciles a SfsTurboInstance object.
 // Historical note: the first cut was create-only.
 type SfsTurboInstanceReconciler struct {
@@ -97,12 +103,17 @@ func (r *SfsTurboInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	// branch returns. Labels:
 	//   result=success         err==nil + no requeue
 	//   result=error_transient err!=nil (controller-runtime will requeue)
-	//   result=requeued        err==nil + Requeue/RequeueAfter set
+	//   result=requeued        err==nil + RequeueAfter set
+	//
+	// controller-runtime v0.21+ deprecated `Result.Requeue` in favor of
+	// `RequeueAfter` only (an immediate requeue is RequeueAfter=1ns or
+	// any non-zero value via the rate limiter). We branch on
+	// RequeueAfter exclusively.
 	defer func() {
 		label := "success"
 		if retErr != nil {
 			label = "error_transient"
-		} else if result.Requeue || result.RequeueAfter > 0 {
+		} else if result.RequeueAfter > 0 {
 			label = "requeued"
 		}
 		opmetrics.ReconcileTotal.WithLabelValues(req.Namespace, label).Inc()
@@ -134,7 +145,10 @@ func (r *SfsTurboInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 		log.V(1).Info("added finalizer")
 		// Requeue immediately — next pass enters the create/poll branch.
-		return ctrl.Result{Requeue: true}, nil
+		// controller-runtime v0.21+ deprecated the bool `Requeue` field
+		// in favor of `RequeueAfter`; any positive value enqueues the
+		// next reconcile, with the rate limiter handling jitter.
+		return ctrl.Result{RequeueAfter: time.Nanosecond}, nil
 	}
 
 	// Branch 3 — paused.
@@ -355,7 +369,7 @@ func (r *SfsTurboInstanceReconciler) reconcilePoll(ctx context.Context, sfsti *s
 			sfsti.Status.ExportPath = ""
 			r.setCondition(sfsti, storagev1alpha1.ConditionReady, metav1.ConditionFalse,
 				storagev1alpha1.ReasonHuaweiAPIError, "FS not found upstream; will recreate")
-			return ctrl.Result{Requeue: true}, r.patchStatus(ctx, sfsti)
+			return ctrl.Result{RequeueAfter: time.Nanosecond}, r.patchStatus(ctx, sfsti)
 		}
 		r.setCondition(sfsti, storagev1alpha1.ConditionFailed, metav1.ConditionTrue,
 			storagev1alpha1.ReasonHuaweiAPIError, err.Error())
@@ -739,7 +753,7 @@ func (r *SfsTurboInstanceReconciler) ensurePVPVC(ctx context.Context, sfsti *sto
 		//
 		// Observed live 2026-05-13 on `dev-0-1-0-shared-storage` after
 		// the slot was retired + re-deployed by Jenkins. See plan
-		// 
+		//
 		if pv.Status.Phase == corev1.VolumeReleased &&
 			pv.Labels[managedByKey] == managedByValue &&
 			pv.Spec.ClaimRef != nil {
@@ -785,14 +799,14 @@ func (r *SfsTurboInstanceReconciler) buildPV(sfsti *storagev1alpha1.SfsTurboInst
 		ObjectMeta: metav1.ObjectMeta{
 			Name: sfsti.Spec.PvcName,
 			Labels: map[string]string{
-				"app.kubernetes.io/component": "shared-storage",
-				"app.kubernetes.io/instance":  sfsti.Spec.PvcName,
-				managedByKey:                  managedByValue,
+				"app.kubernetes.io/component":  ComponentSharedStorage,
+				"app.kubernetes.io/instance":   sfsti.Spec.PvcName,
+				managedByKey:                   managedByValue,
 				"sfs.huaweicloud.com/owned-by": sfsti.Namespace + "." + sfsti.Name,
 			},
 			Annotations: map[string]string{
 				// Defense-in-depth against historical edge cases.
-				"argocd.argoproj.io/sync-options":     "Prune=false",
+				"argocd.argoproj.io/sync-options":      "Prune=false",
 				"sfs.huaweicloud.com/sfsturboinstance": sfsti.Namespace + "/" + sfsti.Name,
 			},
 		},
@@ -830,14 +844,14 @@ func (r *SfsTurboInstanceReconciler) buildPVC(sfsti *storagev1alpha1.SfsTurboIns
 			Name:      sfsti.Spec.PvcName,
 			Namespace: sfsti.Namespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/component": "shared-storage",
-				"app.kubernetes.io/instance":  sfsti.Spec.PvcName,
-				managedByKey:                  managedByValue,
+				"app.kubernetes.io/component":  ComponentSharedStorage,
+				"app.kubernetes.io/instance":   sfsti.Spec.PvcName,
+				managedByKey:                   managedByValue,
 				"sfs.huaweicloud.com/owned-by": sfsti.Namespace + "." + sfsti.Name,
 			},
 			Annotations: map[string]string{
-				"helm.sh/resource-policy":             "keep",
-				"argocd.argoproj.io/sync-options":     "Prune=false",
+				"helm.sh/resource-policy":              "keep",
+				"argocd.argoproj.io/sync-options":      "Prune=false",
 				"sfs.huaweicloud.com/sfsturboinstance": sfsti.Namespace + "/" + sfsti.Name,
 			},
 		},

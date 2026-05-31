@@ -83,10 +83,7 @@ func (c *PodAgencyCreds) needsRefresh(now time.Time) bool {
 		return true
 	}
 	ttl := c.ExpiresAt.Sub(c.FetchedAt)
-	threshold := time.Duration(float64(ttl) * refreshRatio)
-	if threshold < minRefreshLatency {
-		threshold = minRefreshLatency
-	}
+	threshold := max(time.Duration(float64(ttl)*refreshRatio), minRefreshLatency)
 	return age >= threshold
 }
 

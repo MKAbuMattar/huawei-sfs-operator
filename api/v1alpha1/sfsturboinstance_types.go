@@ -225,12 +225,12 @@ type SfsTurboInstanceStatus struct {
 
 // Common Condition Types for SfsTurboInstance.status.conditions.
 const (
-	ConditionReady                  = "Ready"
-	ConditionProvisioning           = "Provisioning"
-	ConditionDeleting               = "Deleting"
-	ConditionExpanding              = "Expanding"
-	ConditionUpdatingSecurityGroup  = "UpdatingSecurityGroup"
-	ConditionFailed                 = "Failed"
+	ConditionReady                 = "Ready"
+	ConditionProvisioning          = "Provisioning"
+	ConditionDeleting              = "Deleting"
+	ConditionExpanding             = "Expanding"
+	ConditionUpdatingSecurityGroup = "UpdatingSecurityGroup"
+	ConditionFailed                = "Failed"
 )
 
 // Common Condition Reasons (machine-readable).
@@ -250,11 +250,11 @@ const (
 	ReasonRetainPolicyApplied = "RetainPolicyApplied"
 
 	// (spec-drift reconciliation).
-	ReasonTagsDriftDetected = "TagsDriftDetected"
-	ReasonTagsReconciled    = "TagsReconciled"
-	ReasonSgUpdatePending   = "SgUpdatePending"
-	ReasonSgUpdated         = "SgUpdated"
-	ReasonSgUpdateFailed    = "SgUpdateFailed"
+	ReasonTagsDriftDetected     = "TagsDriftDetected"
+	ReasonTagsReconciled        = "TagsReconciled"
+	ReasonSgUpdatePending       = "SgUpdatePending"
+	ReasonSgUpdated             = "SgUpdated"
+	ReasonSgUpdateFailed        = "SgUpdateFailed"
 	ReasonImmutableFieldChanged = "ImmutableFieldChanged"
 )
 

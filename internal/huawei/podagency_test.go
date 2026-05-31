@@ -77,7 +77,7 @@ func TestPodAgencyProvider_FetchAndCache(t *testing.T) {
 		url:        mockMetadata.URL,
 	}
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		creds, err := p.Get()
 		if err != nil {
 			t.Fatalf("Get #%d: %v", i, err)

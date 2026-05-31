@@ -8,6 +8,8 @@ package controller
 import (
 	"context"
 	"errors"
+	"maps"
+	"slices"
 	"testing"
 	"time"
 
@@ -48,19 +50,19 @@ type fakeHuawei struct {
 	sgChangeErr  error
 
 	// call audit
-	createCalls   int
-	getCalls      int
-	deleteCalls   int
-	expandCalls   int
-	listTagsCalls int
-	addTagCalls   int
+	createCalls    int
+	getCalls       int
+	deleteCalls    int
+	expandCalls    int
+	listTagsCalls  int
+	addTagCalls    int
 	deleteTagCalls int
-	sgChangeCalls int
-	lastCreate    huawei.CreateInput
-	lastExpand    int32
-	lastSgChange  string
-	addedTags     map[string]string // keys+values passed to AddTag
-	deletedTags   []string          // keys passed to DeleteTag (in order)
+	sgChangeCalls  int
+	lastCreate     huawei.CreateInput
+	lastExpand     int32
+	lastSgChange   string
+	addedTags      map[string]string // keys+values passed to AddTag
+	deletedTags    []string          // keys passed to DeleteTag (in order)
 }
 
 func (f *fakeHuawei) Create(_ context.Context, in huawei.CreateInput) (string, error) {
@@ -96,9 +98,7 @@ func (f *fakeHuawei) ListTags(_ context.Context, _ string) (map[string]string, e
 		return nil, f.listTagsErr
 	}
 	out := make(map[string]string, len(f.tags))
-	for k, v := range f.tags {
-		out[k] = v
-	}
+	maps.Copy(out, f.tags)
 	return out, nil
 }
 
@@ -175,12 +175,7 @@ func newCR() *storagev1alpha1.SfsTurboInstance {
 
 // hasFinalizer reports whether the CR has the controller's finalizer.
 func hasFinalizer(cr *storagev1alpha1.SfsTurboInstance) bool {
-	for _, f := range cr.Finalizers {
-		if f == storagev1alpha1.Finalizer {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(cr.Finalizers, storagev1alpha1.Finalizer)
 }
 
 // runReconcile builds a fake client around cr, runs one Reconcile,
@@ -404,8 +399,8 @@ func TestReconcile_AddsFinalizerWhenMissing(t *testing.T) {
 	if h.createCalls != 0 {
 		t.Errorf("Huawei.Create should not run before finalizer is persisted, got=%d", h.createCalls)
 	}
-	if !res.Requeue {
-		t.Errorf("expected Requeue=true after finalizer add, got=%+v", res)
+	if res.RequeueAfter == 0 {
+		t.Errorf("expected RequeueAfter>0 after finalizer add, got=%+v", res)
 	}
 }
 
@@ -919,7 +914,7 @@ func TestReconcile_PollReadyIdempotentOnPVPVC(t *testing.T) {
 
 	// Two reconciles back-to-back — neither should error or create
 	// duplicates.
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if _, err := r.Reconcile(context.Background(), ctrl.Request{
 			NamespacedName: types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace},
 		}); err != nil {
