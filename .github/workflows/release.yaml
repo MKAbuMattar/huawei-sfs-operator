@@ -30,8 +30,13 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Verify tag matches Chart.yaml version
+      - name: Compute lowercase owner + verify tag matches Chart.yaml version
         run: |
+          # GHCR requires lowercase repository paths; github.repository_owner
+          # may have mixed case (e.g. "MKAbuMattar"). Lowercase it once here.
+          OWNER_LC="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          echo "OWNER_LC=${OWNER_LC}" >> $GITHUB_ENV
+
           TAG="${GITHUB_REF#refs/tags/v}"
           CHART_VERSION=$(grep '^version:' deploy/helm/sfs-operator/Chart.yaml | awk '{print $2}')
           if [ "$TAG" != "$CHART_VERSION" ]; then
@@ -58,8 +63,8 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
-            ghcr.io/${{ github.repository_owner }}/sfs-operator:v${{ env.TAG }}
-            ghcr.io/${{ github.repository_owner }}/sfs-operator:latest
+            ghcr.io/${{ env.OWNER_LC }}/sfs-operator:v${{ env.TAG }}
+            ghcr.io/${{ env.OWNER_LC }}/sfs-operator:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -71,12 +76,12 @@ jobs:
           DIGEST: ${{ steps.docker_build.outputs.digest }}
         run: |
           cosign sign --yes \
-            ghcr.io/${{ github.repository_owner }}/sfs-operator@${DIGEST}
+            ghcr.io/${{ env.OWNER_LC }}/sfs-operator@${DIGEST}
 
       - name: Generate SBOM
         uses: anchore/sbom-action@v0
         with:
-          image: ghcr.io/${{ github.repository_owner }}/sfs-operator:v${{ env.TAG }}
+          image: ghcr.io/${{ env.OWNER_LC }}/sfs-operator:v${{ env.TAG }}
           format: spdx-json
           output-file: sbom.spdx.json
 
@@ -88,7 +93,7 @@ jobs:
         run: |
           helm package deploy/helm/sfs-operator --version "${TAG}" --app-version "${TAG}"
           echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
-          helm push sfs-operator-${TAG}.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
+          helm push sfs-operator-${TAG}.tgz oci://ghcr.io/${OWNER_LC}/charts
 
       - name: Extract changelog excerpt
         id: changelog
