@@ -1,0 +1,143 @@
+# =============================================================================
+# sfs-operator — Helm chart values
+# =============================================================================
+# Production-ready defaults. Override per-installation via `--set` or
+# `-f my-values.yaml`. The two values you ALWAYS have to set are
+# `huawei.projectId` and `huawei.region`.
+
+# Identity used in `app.kubernetes.io/name` + `part-of` labels. Override only
+# if you need to run multiple instances of the operator in the same cluster
+# (each managing a different HuaweiCloud project) and need distinct label
+# sets to keep their Deployments separate.
+operatorName: sfs-operator
+
+# Namespace where Deployment + SA + ConfigMap land. CRD and ClusterRole are
+# cluster-scoped and not affected by this.
+namespace: sfs-operator-system
+
+# -----------------------------------------------------------------------------
+# Image
+# -----------------------------------------------------------------------------
+image:
+  repository: ghcr.io/mkabumattar/sfs-operator
+  pullPolicy: IfNotPresent
+  # tag: defaults to chart appVersion if omitted. Pin to a specific
+  # build only when troubleshooting a regression.
+  # tag: "v0.3.0"
+
+# Pull secrets when pulling from a private registry. Leave empty when using
+# the default public ghcr.io image.
+# Example:
+#   imagePullSecrets:
+#     - name: my-registry-pull-secret
+imagePullSecrets: []
+
+# -----------------------------------------------------------------------------
+# Replicas + resources
+# -----------------------------------------------------------------------------
+# Single replica is fine for clusters managing dozens of CRs. Bump to 2+ and
+# set `leaderElection.enabled: true` for HA.
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: "50m"
+    memory: "64Mi"
+  limits:
+    cpu: "200m"
+    memory: "256Mi"
+
+# -----------------------------------------------------------------------------
+# HuaweiCloud client
+# -----------------------------------------------------------------------------
+# `projectId` and `region` are REQUIRED. Credentials come from one of two
+# sources (see docs/HUAWEI-AUTH.md for the full story):
+#
+#   credentials.source: "agency" (recommended on CCE)
+#     Pod-bound IAM agency. CCE returns short-lived AK/SK + securityToken
+#     via the OpenStack-style metadata service at
+#     169.254.169.254/openstack/latest/securitykey. The operator's provider
+#     refreshes at 50% of TTL with a stale-but-valid fallback. No
+#     long-lived secret lives in the cluster.
+#
+#   credentials.source: "secret"
+#     Reads HUAWEI_ACCESS_KEY + HUAWEI_SECRET_KEY from an existing Secret
+#     in the operator's namespace. Create the Secret out-of-band:
+#       kubectl create secret generic huawei-creds \
+#         --from-literal=HUAWEI_ACCESS_KEY=<AK> \
+#         --from-literal=HUAWEI_SECRET_KEY=<SK> \
+#         -n sfs-operator-system
+#     Long-lived; rotate at least every 90 days. Use this on non-CCE
+#     clusters (kind / on-prem / another cloud).
+huawei:
+  projectId: ""                 # REQUIRED
+  region: ""                    # REQUIRED, e.g. "ap-southeast-1"
+  credentials:
+    source: "agency"            # "agency" | "secret"
+    secretName: "huawei-creds"  # ignored when source=="agency"
+
+# IAM agency name that the operator's ServiceAccount carries via the
+# `cce.huawei.com/agency` annotation. Only used when
+# `huawei.credentials.source: "agency"`. The agency must exist in
+# HuaweiCloud IAM with the SFS Turbo permissions listed in
+# docs/HUAWEI-AUTH.md before installing.
+agencyName: ""
+
+# -----------------------------------------------------------------------------
+# Scheduling
+# -----------------------------------------------------------------------------
+# Tolerations + nodeSelector for placing the operator pod. Leave empty
+# to schedule on any available node.
+tolerations: []
+nodeSelector: {}
+affinity: {}
+
+# -----------------------------------------------------------------------------
+# Metrics + leader election
+# -----------------------------------------------------------------------------
+# Metric names follow the `huawei_sfs_operator_*` prefix:
+#   *_reconcile_total       counter, per-CR outcomes (success/error/requeue)
+#   *_huawei_api_seconds_*  histogram, latency per HuaweiCloud API call
+#   *_fs_phase              gauge, current FS condition phase
+metrics:
+  enabled: false
+  port: 8443
+  serviceMonitor:
+    # Requires the Prometheus Operator CRDs (kube-prometheus-stack or
+    # similar) installed in the cluster.
+    enabled: false
+    namespace: ""               # defaults to chart's namespace
+  # ServiceAccount that Prometheus runs as — used in the metrics-reader
+  # ClusterRoleBinding. Defaults match kube-prometheus-stack; override
+  # for non-standard Prometheus installs.
+  prometheusServiceAccount:
+    name: "kube-prometheus-stack-prometheus"
+    namespace: "monitoring"
+
+# Leader election lets you run `replicaCount > 1` safely. Disable for
+# single-replica setups to save a Lease object and ~50ms of startup.
+leaderElection:
+  enabled: false
+
+# -----------------------------------------------------------------------------
+# NetworkPolicy (egress allow-list)
+# -----------------------------------------------------------------------------
+# Default-allow on the namespace + curated egress allows for:
+#   - DNS (kube-dns)
+#   - K8s API server
+#   - HuaweiCloud SFS Turbo API endpoints
+#   - IAM metadata service (when agency mode is on)
+# Disable on clusters without an NP-enforcing CNI.
+networkPolicy:
+  enabled: true
+  # Override if your cluster's apiserver lives in a non-standard CIDR.
+  # K8s default is 10.96.0.0/12; CCE uses 10.247.0.0/16.
+  apiserverCidr: "10.96.0.0/12"
+
+# -----------------------------------------------------------------------------
+# Health probes
+# -----------------------------------------------------------------------------
+# controller-runtime exposes /healthz + /readyz on this port. Probes are
+# already wired into the Deployment template.
+healthProbe:
+  port: 8081

@@ -1,0 +1,22 @@
+{{/*
+HuaweiCloud client config. The operator binary reads HUAWEI_PROJECT_ID and
+HUAWEI_REGION at startup (see internal/huawei/auth.go in the repo).
+Missing/empty values cause fail-fast at boot time — preferred over per-
+reconcile errors later.
+*/}}
+{{- if not .Values.huawei.projectId }}
+{{- fail "values.huawei.projectId is required (set via --set or your -f values file)" }}
+{{- end }}
+{{- if not .Values.huawei.region }}
+{{- fail "values.huawei.region is required (set via --set or your -f values file)" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sfs-operator-env
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "operator.labels" . | nindent 4 }}
+data:
+  HUAWEI_PROJECT_ID: {{ .Values.huawei.projectId | quote }}
+  HUAWEI_REGION:     {{ .Values.huawei.region    | quote }}

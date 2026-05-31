@@ -1,0 +1,58 @@
+# =============================================================================
+# Example 04 — Hardened production deploy with custom SG + encryption + tags
+# =============================================================================
+# Production-grade setup:
+#   - Pre-created tight Security Group (only the consumer namespaces' Pod
+#     CIDRs are allowed; not the whole VPC subnet)
+#   - Server-side encryption with a KMS CMK (tracked in your IaC)
+#   - autoCreateSgRules: false — operator does NOT modify the SG (so your
+#     SG-as-code stays the source of truth)
+#   - Detailed tag set for cost allocation + compliance
+#
+# Prereq: create the SG + KMS CMK outside the cluster (Terraform / console)
+# and reference their IDs here.
+# =============================================================================
+apiVersion: sfs.huaweicloud.com/v1alpha1
+kind: SfsTurboInstance
+metadata:
+  name: customer-uploads
+  namespace: backend-prod
+  labels:
+    app.kubernetes.io/managed-by: huawei-sfs-operator
+    app.kubernetes.io/part-of: customer-api
+    data.classification: pii
+  annotations:
+    # Recommend annotating with a link to your runbook for this FS — makes
+    # incident-response triage faster.
+    runbook.huawei-sfs-operator.io/url: "https://runbooks.example.com/customer-uploads"
+spec:
+  reclaimPolicy: Retain
+  fsName: customer-uploads-prod
+  size: 8192                       # 8 TiB
+  shareType: STANDARD
+  shareProtocol: NFS
+
+  availabilityZone: <your-az>
+  vpcId: <your-vpc-id>
+  subnetId: <your-subnet-id>
+
+  # Pre-created Security Group. Recommended INBOUND rules (configured
+  # outside this CR via Terraform / console):
+  #   - TCP 2049 from Pod CIDR (NFSv4)
+  #   - TCP 111  from Pod CIDR (rpcbind)
+  #   - UDP 2049 from Pod CIDR (NFSv3 fallback, optional)
+  # Operator will NOT touch this SG because autoCreateSgRules=false.
+  securityGroupId: <your-tight-sg-id>
+  autoCreateSgRules: false
+
+  # KMS encryption — managed by your CMK rotation policy.
+  cryptKeyId: <your-kms-cmk-id>
+
+  tags:
+    Environment: production
+    BusinessUnit: customer-platform
+    DataClass: pii
+    CostCenter: cc-1234
+    Owner: backend-team
+    Compliance: gdpr-pii
+    Backup: snap-daily

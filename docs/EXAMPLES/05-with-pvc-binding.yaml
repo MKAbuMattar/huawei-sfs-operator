@@ -1,0 +1,71 @@
+# =============================================================================
+# Example 05 — Auto-create the PVC + PV (one-step mount-ready volume)
+# =============================================================================
+# When `spec.pvcName` is set, the operator does three things in one reconcile:
+#   1. Provisions the SFS Turbo file system on HuaweiCloud
+#   2. Renders a cluster-scoped PersistentVolume bound to its NFS export
+#   3. Renders a PersistentVolumeClaim in the CR's namespace claiming that PV
+#
+# A Pod can mount it with `claimName: <pvcName>` immediately — no Terraform,
+# no manual PV/PVC YAML. This matches the "one resource = one usable volume"
+# pattern.
+#
+# When to use: standard app deployments that just need a shared NFS volume
+# without dealing with raw PV/PVC plumbing.
+# =============================================================================
+apiVersion: sfs.huaweicloud.com/v1alpha1
+kind: SfsTurboInstance
+metadata:
+  name: shared-storage
+  namespace: backend-dev
+spec:
+  reclaimPolicy: Retain
+  fsName: backend-dev-shared
+  size: 500
+  shareType: STANDARD
+  shareProtocol: NFS
+
+  availabilityZone: <your-az>
+  vpcId: <your-vpc-id>
+  subnetId: <your-subnet-id>
+  securityGroupId: ""
+  autoCreateSgRules: true
+
+  # === PVC auto-creation ===
+  # Once these three fields are set, the operator renders a PV + PVC
+  # alongside the FS. PV is static-bound to the FS's NFS export path.
+
+  # Name used for both PV (cluster-scoped) and PVC (this namespace).
+  pvcName: shared-storage
+
+  # K8s storage request. Defaults to spec.size + "Gi" if omitted. Independent
+  # from the underlying FS — apps can request less than the FS provides.
+  pvcSize: 500Gi
+
+  # StorageClass name (acts as a marker, no dynamic provisioning).
+  # Default is "csi-sfsturbo-perinstance"; override if you have your own
+  # StorageClass naming convention.
+  storageClassName: csi-sfsturbo-perinstance
+
+  tags:
+    Environment: dev
+    BoundPVC: backend-dev/shared-storage
+
+---
+# Example consumer Pod — references the PVC by name. Mounts at /var/data.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-consumer
+  namespace: backend-dev
+spec:
+  containers:
+    - name: app
+      image: ghcr.io/example/myapp:latest
+      volumeMounts:
+        - name: shared
+          mountPath: /var/data
+  volumes:
+    - name: shared
+      persistentVolumeClaim:
+        claimName: shared-storage   # ← matches spec.pvcName above

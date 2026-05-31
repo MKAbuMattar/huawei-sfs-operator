@@ -1,0 +1,30 @@
+apiVersion: v2
+name: sfs-operator
+description: |
+  Kubernetes operator that reconciles SfsTurboInstance Custom Resources
+  into HuaweiCloud SFS Turbo file systems. Ships the manager Deployment,
+  CRD, RBAC, NetworkPolicy, ServiceAccount, and Prometheus ServiceMonitor.
+  No external chart dependencies — everything needed to run the operator
+  is in this chart.
+
+  Repo: https://github.com/MKAbuMattar/huawei-sfs-operator
+type: application
+version: 0.3.0
+appVersion: "0.1.0"
+keywords:
+  - sfs
+  - sfs-turbo
+  - huawei
+  - huaweicloud
+  - operator
+  - kubebuilder
+  - controller-runtime
+  - storage
+  - cce
+home: https://github.com/MKAbuMattar/huawei-sfs-operator
+sources:
+  - https://github.com/MKAbuMattar/huawei-sfs-operator
+maintainers:
+  - name: huawei-sfs-operator authors
+    url: https://github.com/MKAbuMattar/huawei-sfs-operator
+icon: https://raw.githubusercontent.com/cncf/artwork/master/projects/kubernetes/icon/color/kubernetes-icon-color.svg

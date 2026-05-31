@@ -1,0 +1,40 @@
+# =============================================================================
+# Example 01 — Minimal STANDARD FS, Retain reclaim policy
+# =============================================================================
+# The smallest practical SfsTurboInstance. Creates a 500 GiB STANDARD-tier
+# SFS Turbo file system that survives CR deletion.
+#
+# What you need to fill in: 4 placeholders (AZ, VPC ID, subnet ID, name).
+# Everything else uses safe defaults.
+#
+# When to use this: production data that must NEVER be auto-destroyed by
+# `kubectl delete`. Data outlives the CR; manual cleanup via Huawei console
+# or API is required to actually free the FS.
+# =============================================================================
+apiVersion: sfs.huaweicloud.com/v1alpha1
+kind: SfsTurboInstance
+metadata:
+  name: app-data
+  namespace: default
+spec:
+  # Retain = safer default. CR deletion drops the finalizer but the
+  # HuaweiCloud FS lives on. You can recover by re-creating a CR with
+  # the same fsName + a manual pre-fill of status.fsId.
+  reclaimPolicy: Retain
+
+  # Identifying name (visible in the HuaweiCloud SFS Turbo console).
+  fsName: app-data
+  size: 500                      # GiB; range 500–32768 for STANDARD tier
+  shareType: STANDARD            # STANDARD (default) | PERFORMANCE
+  shareProtocol: NFS             # NFS (default; only protocol supported today)
+
+  # Network — must match the CCE cluster's VPC/subnet for in-VPC mounts.
+  availabilityZone: <your-az>    # e.g. ap-southeast-1a, cn-east-3b
+  vpcId: <your-vpc-id>
+  subnetId: <your-subnet-id>
+
+  # Empty securityGroupId lets HuaweiCloud auto-create a per-FS SG
+  # with NFS ports (2049, 111, etc.) opened from the subnet's CIDR.
+  # Pre-created tight SGs are recommended in prod — see example 04.
+  securityGroupId: ""
+  autoCreateSgRules: true

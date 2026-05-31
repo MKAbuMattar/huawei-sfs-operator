@@ -1,0 +1,45 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumeclaims
+  - persistentvolumes
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - sfs.huaweicloud.com
+  resources:
+  - sfsturboinstances
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - sfs.huaweicloud.com
+  resources:
+  - sfsturboinstances/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - sfs.huaweicloud.com
+  resources:
+  - sfsturboinstances/status
+  verbs:
+  - get
+  - patch
+  - update
