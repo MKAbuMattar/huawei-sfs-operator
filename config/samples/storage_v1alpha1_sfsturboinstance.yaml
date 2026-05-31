@@ -1,0 +1,49 @@
+# Sample SfsTurboInstance. The operator is workload-agnostic — this
+# manifest works for any namespace / app / cluster as long as the
+# operator is deployed and the CRD is installed.
+#
+# Replace the <FILL_ME: …> tokens with values from your environment:
+#   <FILL_ME: app namespace>          any K8s namespace; the CR is
+#                                     namespaced and binds to its own ns
+#   <FILL_ME: human-readable FS name> shows up in Huawei console
+#   <FILL_ME: az>                     ap-southeast-1a / cn-east-3a / …
+#   <FILL_ME: vpc id>                 from `make output WORKDIR=shared`
+#   <FILL_ME: subnet id>              from `make output WORKDIR=shared`
+#   <FILL_ME: kms cmk id>             from environment/kms-keys.tf output
+#
+# The operator's reconciler doesn't care which workload binds the
+# resulting PV — Deployment / StatefulSet / Job / DaemonSet all work.
+apiVersion: sfs.huaweicloud.com/v1alpha1
+kind: SfsTurboInstance
+metadata:
+  name: shared-storage
+  namespace: "<FILL_ME: app namespace>"
+  labels:
+    app.kubernetes.io/managed-by: huawei-sfs-operator
+spec:
+  # Retain is the safer default — `kubectl delete sfsti` leaves the
+  # data intact. Flip to Delete only for ephemeral test slots where
+  # data loss is OK.
+  reclaimPolicy: Retain
+  pausedReconcile: false
+
+  fsName: "<FILL_ME: human-readable FS name>"
+  size: 500
+  shareType: STANDARD
+  shareProtocol: NFS
+  enhanced: false
+
+  availabilityZone: "<FILL_ME: az>"
+  vpcId: "<FILL_ME: vpc id>"
+  subnetId: "<FILL_ME: subnet id>"
+  # Empty string lets Huawei auto-create a per-FS SG with NFS ports
+  # open. For prod, point at a pre-created tight SG.
+  securityGroupId: ""
+
+  # Optional — empty disables encryption at rest.
+  cryptKeyId: "<FILL_ME: kms cmk id>"
+  autoCreateSgRules: true
+
+  tags:
+    Environment: dev
+    ManagedBy: huawei-sfs-operator
