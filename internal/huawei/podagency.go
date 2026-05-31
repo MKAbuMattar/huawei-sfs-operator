@@ -152,7 +152,7 @@ func (p *PodAgencyProvider) fetch() (*PodAgencyCreds, error) {
 	if err != nil {
 		return nil, fmt.Errorf("metadata service unreachable: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
